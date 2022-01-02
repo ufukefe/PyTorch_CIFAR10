@@ -42,8 +42,10 @@ class BasicBlock(nn.Module):
         base_width=64,
         dilation=1,
         norm_layer=None,
+        quantize = False,
     ):
         super(BasicBlock, self).__init__()
+        self.quantize = quantize
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
@@ -58,6 +60,8 @@ class BasicBlock(nn.Module):
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
         self.stride = stride
+        # FloatFunction()
+        self.skip_add = nn.quantized.FloatFunctional()
 
     def forward(self, x):
         identity = x
@@ -71,8 +75,13 @@ class BasicBlock(nn.Module):
 
         if self.downsample is not None:
             identity = self.downsample(x)
-
-        out += identity
+            
+        # Notice the addition operation in both scenarios
+        if self.quantize:
+            out = self.skip_add.add(out, identity)
+        else:
+            out += identity
+            
         out = self.relu(out)
 
         return out
@@ -141,8 +150,10 @@ class ResNet(nn.Module):
         width_per_group=64,
         replace_stride_with_dilation=None,
         norm_layer=None,
+        quantize=False
     ):
         super(ResNet, self).__init__()
+        self.quantize = quantize
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -224,6 +235,7 @@ class ResNet(nn.Module):
                 self.base_width,
                 previous_dilation,
                 norm_layer,
+                quantize=self.quantize
             )
         )
         self.inplanes = planes * block.expansion
@@ -236,12 +248,17 @@ class ResNet(nn.Module):
                     base_width=self.base_width,
                     dilation=self.dilation,
                     norm_layer=norm_layer,
+                    quantize=self.quantize
                 )
             )
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
+         # Input are quantized
+        if self.quantize:
+            x = self.quant(x)
+            
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -255,6 +272,10 @@ class ResNet(nn.Module):
         x = self.avgpool(x)
         x = x.reshape(x.size(0), -1)
         x = self.fc(x)
+        
+        # Outputs are dequantized
+        if self.quantize:
+            x = self.dequant(x)
 
         return x
 
