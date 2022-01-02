@@ -193,6 +193,8 @@ class ResNet(nn.Module):
         )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
