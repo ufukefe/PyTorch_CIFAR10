@@ -256,11 +256,11 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
-         # Input are quantized
+    def _forward_impl(self, x):
+        # Input are quantized
         if self.quantize:
             x = self.quant(x)
-            
+    
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -272,15 +272,18 @@ class ResNet(nn.Module):
         x = self.layer4(x)
 
         x = self.avgpool(x)
-        x = x.reshape(x.size(0), -1)
+        x = torch.flatten(x, 1)
         x = self.fc(x)
         
         # Outputs are dequantized
         if self.quantize:
             x = self.dequant(x)
-
         return x
 
+    def forward(self, x):
+         # See note [TorchScript super()]
+        return self._forward_impl(x)
+    
 
 def _resnet(arch, block, layers, pretrained, progress, device, **kwargs):
     model = ResNet(block, layers, **kwargs)
